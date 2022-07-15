@@ -1,5 +1,6 @@
 from .iresnet import iresnet18, iresnet34, iresnet50, iresnet100, iresnet200
 from .mobilefacenet import get_mbf
+from . import backbone_adaface
 
 
 def get_model(name, **kwargs):
@@ -82,4 +83,5 @@ def get_model(name, **kwargs):
             num_heads=8, drop_path_rate=0.05, norm_layer="ln", mask_ratio=0.05, using_checkpoint=True)
 
     else:
-        raise ValueError()
+        # raise ValueError()
+        return backbone_adaface.build_model(model_name=name)
