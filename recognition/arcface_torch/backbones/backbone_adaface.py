@@ -11,17 +11,17 @@ from torch.nn import Module
 from torch.nn import PReLU
 import os
 
-def build_model(model_name='ir_50'):
+def build_model(model_name='ir_50', fp16=False):
     if model_name == 'ir_101':
-        return IR_101(input_size=(112,112))
+        return IR_101(input_size=(112,112), fp16=fp16)
     elif model_name == 'ir_50':
-        return IR_50(input_size=(112,112))
+        return IR_50(input_size=(112,112), fp16=fp16)
     elif model_name == 'ir_se_50':
-        return IR_SE_50(input_size=(112,112))
+        return IR_SE_50(input_size=(112,112), fp16=fp16)
     elif model_name == 'ir_34':
-        return IR_34(input_size=(112,112))
+        return IR_34(input_size=(112,112), fp16=fp16)
     elif model_name == 'ir_18':
-        return IR_18(input_size=(112,112))
+        return IR_18(input_size=(112,112), fp16=fp16)
     else:
         raise ValueError('not a correct model name', model_name)
 
@@ -265,19 +265,23 @@ def get_blocks(num_layers):
 
 
 class Backbone(Module):
-    def __init__(self, input_size, num_layers, mode='ir'):
+    def __init__(self, input_size, num_layers, mode='ir', fp16=False):
         """ Args:
             input_size: input_size of backbone
             num_layers: num_layers of backbone
             mode: support ir or irse
         """
         super(Backbone, self).__init__()
+
         assert input_size[0] in [112, 224], \
             "input_size should be [112, 112] or [224, 224]"
         assert num_layers in [18, 34, 50, 100, 152, 200], \
             "num_layers should be 18, 34, 50, 100 or 152"
         assert mode in ['ir', 'ir_se'], \
             "mode should be ir or ir_se"
+        
+        self.fp16 = fp16
+        
         self.input_layer = Sequential(Conv2d(3, 64, (3, 3), 1, 1, bias=False),
                                       BatchNorm2d(64), PReLU(64))
         blocks = get_blocks(num_layers)
@@ -317,15 +321,16 @@ class Backbone(Module):
 
 
     def forward(self, x):
+        with torch.cuda.amp.autocast(self.fp16):
         
-        # current code only supports one extra image
-        # it comes with a extra dimension for number of extra image. We will just squeeze it out for now
-        x = self.input_layer(x)
+            # current code only supports one extra image
+            # it comes with a extra dimension for number of extra image. We will just squeeze it out for now
+            x = self.input_layer(x)
 
-        for idx, module in enumerate(self.body):
-            x = module(x)
+            for idx, module in enumerate(self.body):
+                x = module(x)
 
-        x = self.output_layer(x)
+        x = self.output_layer(x.float() if self.fp16 else x)
         norm = torch.norm(x, 2, 1, True)
         output = torch.div(x, norm)
 
@@ -333,82 +338,82 @@ class Backbone(Module):
 
 
 
-def IR_18(input_size):
+def IR_18(input_size, fp16=False):
     """ Constructs a ir-18 model.
     """
-    model = Backbone(input_size, 18, 'ir')
+    model = Backbone(input_size, 18, 'ir', fp16)
 
     return model
 
 
-def IR_34(input_size):
+def IR_34(input_size, fp16=False):
     """ Constructs a ir-34 model.
     """
-    model = Backbone(input_size, 34, 'ir')
+    model = Backbone(input_size, 34, 'ir', fp16)
 
     return model
 
 
-def IR_50(input_size):
+def IR_50(input_size, fp16=False):
     """ Constructs a ir-50 model.
     """
-    model = Backbone(input_size, 50, 'ir')
+    model = Backbone(input_size, 50, 'ir', fp16)
 
     return model
 
 
-def IR_101(input_size):
+def IR_101(input_size, fp16=False):
     """ Constructs a ir-101 model.
     """
-    model = Backbone(input_size, 100, 'ir')
+    model = Backbone(input_size, 100, 'ir', fp16)
 
     return model
 
 
-def IR_152(input_size):
+def IR_152(input_size, fp16=False):
     """ Constructs a ir-152 model.
     """
-    model = Backbone(input_size, 152, 'ir')
+    model = Backbone(input_size, 152, 'ir', fp16)
 
     return model
 
 
-def IR_200(input_size):
+def IR_200(input_size, fp16=False):
     """ Constructs a ir-200 model.
     """
-    model = Backbone(input_size, 200, 'ir')
+    model = Backbone(input_size, 200, 'ir', fp16)
 
     return model
 
 
-def IR_SE_50(input_size):
+def IR_SE_50(input_size, fp16=False):
     """ Constructs a ir_se-50 model.
     """
-    model = Backbone(input_size, 50, 'ir_se')
+    model = Backbone(input_size, 50, 'ir_se', fp16)
 
     return model
 
 
-def IR_SE_101(input_size):
+def IR_SE_101(input_size, fp16=False):
     """ Constructs a ir_se-101 model.
     """
-    model = Backbone(input_size, 100, 'ir_se')
+    model = Backbone(input_size, 100, 'ir_se', fp16)
 
     return model
 
 
-def IR_SE_152(input_size):
+def IR_SE_152(input_size, fp16=False):
     """ Constructs a ir_se-152 model.
     """
-    model = Backbone(input_size, 152, 'ir_se')
+    model = Backbone(input_size, 152, 'ir_se', fp16)
 
     return model
 
 
-def IR_SE_200(input_size):
+def IR_SE_200(input_size, fp16=False):
     """ Constructs a ir_se-200 model.
     """
-    model = Backbone(input_size, 200, 'ir_se')
+    model = Backbone(input_size, 200, 'ir_se', fp16)
 
     return model
 

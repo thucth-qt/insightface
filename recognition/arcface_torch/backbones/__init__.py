@@ -84,4 +84,5 @@ def get_model(name, **kwargs):
 
     else:
         # raise ValueError()
-        return backbone_adaface.build_model(model_name=name)
+        fp16 = kwargs.get("fp16", False)
+        return backbone_adaface.build_model(model_name=name, fp16=fp16)
