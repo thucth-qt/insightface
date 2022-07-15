@@ -37,7 +37,7 @@ config.verbose = 2000
 config.frequent = 10
 
 # For Large Sacle Dataset, such as WebFace42M
-config.dali = False 
+config.dali = True 
 
 
 # setup seed

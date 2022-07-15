@@ -17,7 +17,7 @@ config.weight_decay = 5e-4
 config.batch_size = 128
 config.lr = 0.4
 config.verbose = 2000
-config.dali = False
+config.dali = True
 
 config.rec = "/train_tmp/WebFace42M"
 config.num_classes = 2059906

@@ -17,7 +17,7 @@ config.weight_decay = 1e-4
 config.batch_size = 128
 config.lr = 0.1
 config.verbose = 2000
-config.dali = False
+config.dali = True
 
 config.rec = "/train_tmp/faces_emore"
 config.num_classes = 85742

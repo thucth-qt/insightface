@@ -17,7 +17,7 @@ config.weight_decay = 5e-4
 config.batch_size = 128
 config.lr = 0.1
 config.verbose = 2000
-config.dali = False
+config.dali = True
 
 config.rec = "/share/team/thucth/data/FaceReg/faces_emore"
 config.num_classes = 85742
