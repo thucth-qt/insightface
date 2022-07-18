@@ -229,16 +229,9 @@ class DistCrossEntropyFunc(torch.autograd.Function):
         loss[index] = logits[index].gather(1, label[index])
         distributed.all_reduce(loss, distributed.ReduceOp.SUM)
         ctx.save_for_backward(index, logits, label)
-        loss = loss.clamp_min_(1e-30).log_().mean() * (-1)
-        if torch.isnan(loss):
-            print("="*20)
-            print("loss: ", loss)
-            print("loss.shape: ", loss.shape)
-            print("logits.shape: ", logits.shape)
-            print("label.shape: ", label.shape)
-            print("="*20)
-            import pdb; pdb.set_trace()
-            
+        loss = loss.clamp_min_(1e-30)
+        loss = loss.log_()
+        loss = loss.mean() * (-1)
         return loss
 
     @staticmethod
@@ -489,13 +482,7 @@ class AdaPartialFC(torch.nn.Module):
 
         logits = self.margin_softmax(logits, norms, labels)
 
-        loss = self.dist_cross_entropy(logits, labels)
-        if torch.isnan(loss):
-            print("="*20)
-            print("loss: ", loss)
-            print("loss.shape: ", loss.shape)
-            print("logits.shape: ", logits.shape)
-            print("="*20)
+        loss = self.dist_cross_entropy(logits, labels)        
         return loss
 
     def state_dict(self, destination=None, prefix="", keep_vars=False):

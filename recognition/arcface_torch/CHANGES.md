@@ -8,4 +8,31 @@ pip install --extra-index-url https://developer.download.nvidia.com/compute/redi
 2. define loss and head for new adaface
 - ref config:
     - configs/ms1mv2_ir50_thucth_arcface01.py  : Ada backbone but Acrface head.
-    - (update)  configs/ms1mv2_ir50_thucth_adaface1.py  : Ada backbone + Ada head.
+    - (update)  configs/ms1mv2_ir50_thucth_adaface1.py  : Ada backbone + Ada head - single GPU.
+    - (new) ada fullflow - multiple GPUs (todo: load_state_dict, sample_rate): ./scritps/run_3gpu_ms1mv2.sh ms1mv2_ir100_thucth_adaface1.py
+
+
+
+
+
+# FYI
+
+To set breakpoints for debugging in multiprocessing:
+
+```
+class ForkedPdb(pdb.Pdb):
+    """A Pdb subclass that may be used
+    from a forked multiprocessing child
+    """
+
+    def interaction(self, *args, **kwargs):
+        _stdin = sys.stdin
+        try:
+            sys.stdin = open('/dev/stdin')
+            pdb.Pdb.interaction(self, *args, **kwargs)
+        finally:
+            sys.stdin = _stdin
+
+ForkedPdb.set_trace()
+ ```
+

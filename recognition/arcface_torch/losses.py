@@ -149,8 +149,12 @@ class AdaAct(torch.nn.Module):
 
         # update batchmean batchstd
         with torch.no_grad():
-            mean_z = safe_norms.mean().detach()
-            std_z = safe_norms.std().detach()
+            if safe_norms.size(0) <= 1:
+                mean_z = safe_norms[0].detach()
+                std_z = 0.
+            else:
+                mean_z = safe_norms.mean().detach()
+                std_z = safe_norms.std().detach()
             self.batch_mean_z = mean_z * self.t_alpha + (1 - self.t_alpha) * self.batch_mean_z
             self.batch_std_z =  std_z * self.t_alpha + (1 - self.t_alpha) * self.batch_std_z
 
