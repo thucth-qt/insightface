@@ -10,9 +10,9 @@ from torch.utils.tensorboard import SummaryWriter
 
 from backbones import get_model
 from dataset import get_dataloader
-from losses import CombinedMarginLoss
+from losses import CombinedMarginLoss, AdaAct
 from lr_scheduler import PolyScheduler
-from partial_fc import PartialFC, PartialFCAdamW
+from heads import PartialFC, PartialFCAdamW, AdaPartialFC
 from utils.utils_callbacks import CallBackLogging, CallBackVerification
 from utils.utils_config import get_config
 from utils.utils_logging import AverageMeter, init_logging
@@ -74,23 +74,46 @@ def main(args):
     # FIXME using gradient checkpoint if there are some unused parameters will cause error
     backbone._set_static_graph()
 
-    margin_loss = CombinedMarginLoss(
+    if cfg.head == "adaface": #new adaface
+        margin_loss = AdaAct( 
+        cfg.m, 
+        cfg.h, 
+        cfg.s, 
+        cfg.t_alpha)
+    elif cfg.head == "oldhead": #author
+        margin_loss = CombinedMarginLoss(
         64,
         cfg.margin_list[0],
         cfg.margin_list[1],
         cfg.margin_list[2],
         cfg.interclass_filtering_threshold
-    )
+        )
 
     if cfg.optimizer == "sgd":
-        module_partial_fc = PartialFC(
-            margin_loss, cfg.embedding_size, cfg.num_classes,
-            cfg.sample_rate, cfg.fp16)
-        module_partial_fc.train().cuda()
-        # TODO the params of partial fc must be last in the params list
-        opt = torch.optim.SGD(
-            params=[{"params": backbone.parameters()}, {"params": module_partial_fc.parameters()}],
-            lr=cfg.lr, momentum=0.9, weight_decay=cfg.weight_decay)
+        if cfg.head=="adaface":
+            module_partial_fc = AdaPartialFC(margin_loss=margin_loss, \
+                embedding_size=cfg.embedding_size, \
+                num_classes=cfg.num_classes, \
+                sample_rate=1., \
+                fp16=cfg.fp16)
+
+            module_partial_fc.train().cuda()
+            # TODO the params of partial fc must be last in the params list
+            opt = torch.optim.SGD(
+                params=[{"params": backbone.parameters()}, {"params": module_partial_fc.parameters()}],
+                lr=cfg.lr, momentum=0.9, weight_decay=cfg.weight_decay)
+
+        elif cfg.head=="oldhead":
+            module_partial_fc = PartialFC(
+                margin_loss, cfg.embedding_size, cfg.num_classes,
+                cfg.sample_rate, cfg.fp16)
+            
+
+            module_partial_fc.train().cuda()
+            # TODO the params of partial fc must be last in the params list
+            opt = torch.optim.SGD(
+                params=[{"params": backbone.parameters()}, {"params": module_partial_fc.parameters()}],
+                lr=cfg.lr, momentum=0.9, weight_decay=cfg.weight_decay)
 
     elif cfg.optimizer == "adamw":
         module_partial_fc = PartialFCAdamW(
@@ -149,31 +172,73 @@ def main(args):
 
         if isinstance(train_loader, DataLoader):
             train_loader.sampler.set_epoch(epoch)
-        for _, (img, local_labels) in enumerate(train_loader):
-            global_step += 1
-            local_embeddings = backbone(img)
-            loss: torch.Tensor = module_partial_fc(local_embeddings, local_labels, opt)
+        if cfg.head == "oldhead":
+            for _, (img, local_labels) in enumerate(train_loader):
+                global_step += 1
+                local_embeddings = backbone(img)
+                loss: torch.Tensor = module_partial_fc(local_embeddings, local_labels, opt)
 
-            if cfg.fp16:
-                amp.scale(loss).backward()
-                amp.unscale_(opt)
-                torch.nn.utils.clip_grad_norm_(backbone.parameters(), 5)
-                amp.step(opt)
-                amp.update()
-            else:
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(backbone.parameters(), 5)
-                opt.step()
+                if cfg.fp16:
+                    amp.scale(loss).backward()
+                    amp.unscale_(opt)
+                    torch.nn.utils.clip_grad_norm_(backbone.parameters(), 5)
+                    amp.step(opt)
+                    amp.update()
+                else:
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_(backbone.parameters(), 5)
+                    opt.step()
 
-            opt.zero_grad()
-            lr_scheduler.step()
+                opt.zero_grad()
+                lr_scheduler.step()
 
-            with torch.no_grad():
-                loss_am.update(loss.item(), 1)
-                callback_logging(global_step, loss_am, epoch, cfg.fp16, lr_scheduler.get_last_lr()[0], amp)
+                with torch.no_grad():
+                    loss_am.update(loss.item(), 1)
+                    if torch.isnan(loss_am):
+                        logging.info("="*50)
+                        logging.info("nan loss detected")
+                        logging.info("loss: ", loss)
+                        logging.info("local_labels: ", local_labels)
+                        import pdb; pdb.set_trace()
+                    callback_logging(global_step, loss_am, epoch, cfg.fp16, lr_scheduler.get_last_lr()[0], amp)
 
-                if global_step % cfg.verbose == 0 and global_step > 0:
-                    callback_verification(global_step, backbone)
+                    if global_step % cfg.verbose == 0 and global_step > 0:
+                        callback_verification(global_step, backbone)
+        
+        elif cfg.head == "adaface":
+            for _, (img, local_labels) in enumerate(train_loader):
+                global_step += 1
+                local_embeddings, norm = backbone(img)
+                
+                loss: torch.Tensor = module_partial_fc(local_embeddings=local_embeddings, \
+                                local_norms = norm, \
+                                local_labels=local_labels, 
+                                optimizer=opt)
+                if cfg.fp16:
+                    amp.scale(loss).backward()
+                    amp.unscale_(opt)
+                    torch.nn.utils.clip_grad_norm_(backbone.parameters(), 5)
+                    amp.step(opt)
+                    amp.update()
+                else:
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_(backbone.parameters(), 5)
+                    opt.step()
+
+                opt.zero_grad()
+                lr_scheduler.step()
+
+                with torch.no_grad():
+                    loss_am.update(loss.item(), 1)
+                    callback_logging(global_step, loss_am, epoch, cfg.fp16, lr_scheduler.get_last_lr()[0], amp)
+
+                    if global_step % cfg.verbose == 0 and global_step > 0:
+                        callback_verification(global_step, backbone)
+        
+ 
+
+
+
 
         if cfg.save_all_states:
             checkpoint = {

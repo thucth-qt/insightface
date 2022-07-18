@@ -158,16 +158,13 @@ class PartialFCAdamW(torch.nn.Module):
 
         embeddings = torch.cat(_list_embeddings)
         labels = torch.cat(_gather_labels)
-
+        import pdb; pdb.set_trace()
         labels = labels.view(-1, 1)
         index_positive = (self.class_start <= labels) & (
             labels < self.class_start + self.num_local
         )
         labels[~index_positive] = -1
         labels[index_positive] -= self.class_start
-
-        if self.sample_rate < 1:
-            self.sample(labels, index_positive, optimizer)
 
         with torch.cuda.amp.autocast(self.fp16):
             norm_embeddings = normalize(embeddings)
@@ -232,7 +229,17 @@ class DistCrossEntropyFunc(torch.autograd.Function):
         loss[index] = logits[index].gather(1, label[index])
         distributed.all_reduce(loss, distributed.ReduceOp.SUM)
         ctx.save_for_backward(index, logits, label)
-        return loss.clamp_min_(1e-30).log_().mean() * (-1)
+        loss = loss.clamp_min_(1e-30).log_().mean() * (-1)
+        if torch.isnan(loss):
+            print("="*20)
+            print("loss: ", loss)
+            print("loss.shape: ", loss.shape)
+            print("logits.shape: ", logits.shape)
+            print("label.shape: ", label.shape)
+            print("="*20)
+            import pdb; pdb.set_trace()
+            
+        return loss
 
     @staticmethod
     def backward(ctx, loss_gradient):
@@ -386,8 +393,9 @@ class AdaPartialFC(torch.nn.Module):
     def forward(
         self,
         local_embeddings: torch.Tensor,
-        norms: torch.Tensor,
-        local_labels: torch.Tensor
+        local_norms: torch.Tensor,
+        local_labels: torch.Tensor,
+        optimizer: torch.optim.Optimizer,
     ):
         """
         Parameters:
@@ -402,37 +410,69 @@ class AdaPartialFC(torch.nn.Module):
         loss: torch.Tensor
             pass
         """
-
+        
+        
         local_labels.squeeze_()
         local_labels = local_labels.long()
+        
+        local_norms = local_norms.squeeze()
+        
         self.update()
 
         batch_size = local_embeddings.size(0)
+        
         if self.last_batch_size == 0:
             self.last_batch_size = batch_size
         assert self.last_batch_size == batch_size, (
             "last batch size do not equal current batch size: {} vs {}".format(
                 self.last_batch_size, batch_size))
 
+
         _gather_embeddings = [
             torch.zeros((batch_size, self.embedding_size)).cuda()
             for _ in range(self.world_size)
         ]
+
+
+        _gather_norms = [torch.zeros((batch_size)).cuda() for _ in range(self.world_size)]
+        
         _gather_labels = [
             torch.zeros(batch_size).long().cuda() for _ in range(self.world_size)
         ]
+
+
         _list_embeddings = AllGather(local_embeddings, *_gather_embeddings)
         distributed.all_gather(_gather_labels, local_labels)
+        distributed.all_gather(_gather_norms, local_norms)
 
         embeddings = torch.cat(_list_embeddings)
         labels = torch.cat(_gather_labels)
+        norms = torch.cat(_gather_norms)
 
+    
         labels = labels.view(-1, 1)
         index_positive = (self.class_start <= labels) & (
             labels < self.class_start + self.num_local
         )
+        norms = norms.view(-1, 1)
+        # print("="*100)
+        # print("rank: ", distributed.get_rank())
+        # print("index_positive: ", index_positive)
+        # print("index_positive.shape: ", index_positive.shape)
+        # print("self.class_start: ", self.class_start)
+        # print("self.num_local: ", self.num_local)
+        # print("local_embeddings.shape: ", local_embeddings.shape)
+        # print("norm.shape: ", local_norms.shape)
+        # print("labels.shape: ", labels.shape)
+        # # print("labels: ", labels)
+        # print("="*100)
+        # import pdb; pdb.set_trace()
+
+
         labels[~index_positive] = -1
         labels[index_positive] -= self.class_start
+        
+        
         with torch.cuda.amp.autocast(self.fp16):
             norm_embeddings = normalize(embeddings)
             norm_weight_activated = normalize(self.weight_activated)
@@ -440,8 +480,22 @@ class AdaPartialFC(torch.nn.Module):
         if self.fp16:
             logits = logits.float()
         logits = logits.clamp(-1, 1)
+
+        # indices = torch.where(labels != -1)
+        # if indices[0].size(0)==0:
+        #     import pdb; pdb.set_trace()
+        # if (labels==-1).any():
+        #     import pdb; pdb.set_trace()
+
         logits = self.margin_softmax(logits, norms, labels)
+
         loss = self.dist_cross_entropy(logits, labels)
+        if torch.isnan(loss):
+            print("="*20)
+            print("loss: ", loss)
+            print("loss.shape: ", loss.shape)
+            print("logits.shape: ", logits.shape)
+            print("="*20)
         return loss
 
     def state_dict(self, destination=None, prefix="", keep_vars=False):
