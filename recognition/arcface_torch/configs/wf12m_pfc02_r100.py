@@ -19,7 +19,7 @@ config.batch_size = 128
 config.optimizer = "sgd"
 config.lr = 0.1
 config.verbose = 2000
-config.dali = True
+config.dali = False # set False beacause of the dataset issue
 
 config.rec = "/train_tmp/WebFace12M"
 config.num_classes = 617970

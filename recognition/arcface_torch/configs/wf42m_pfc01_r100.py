@@ -17,7 +17,7 @@ config.weight_decay = 5e-4
 config.batch_size = 128
 config.lr = 0.1
 config.verbose = 10000
-config.dali = True
+config.dali = False # set False beacause of the dataset issue
 
 config.rec = "/share/team/thucth/data/FaceReg/faces_emore/webface42m"
 config.num_classes = 2059906
