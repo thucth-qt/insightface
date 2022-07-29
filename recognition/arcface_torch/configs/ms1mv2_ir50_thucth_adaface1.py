@@ -25,16 +25,16 @@ config.sample_rate = 1.
 config.fp16 = True
 config.momentum = 0.9
 config.weight_decay = 5e-4
-config.batch_size = 48
+config.batch_size = 128
 config.lr = 0.1
 config.verbose = 5000
 config.dali = False # set False beacause of the dataset issue
 
-config.rec = "/share/team/thucth/data/FaceReg/faces_emore"
+config.rec = "/mnt/data/MS1MV2"
 config.num_classes = 85742
 config.num_image = 5822653
-config.num_epoch = 20
+config.num_epoch = 25
 config.warmup_epoch = 0
 # config.val_targets = [ "agedb_30", "calfw", "cfp_ff", "cfp_fp", "lfw", "vgg2_fp"]
-config.val_targets = ["lfw"] #load 1 bin for quick debugging
+config.val_targets = ["agedb_30", "cfp_fp", "lfw"] #load 1 bin for quick debugging
 

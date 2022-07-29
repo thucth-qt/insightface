@@ -203,7 +203,7 @@ def main(args):
                     callback_logging(global_step, loss_am, epoch, cfg.fp16, lr_scheduler.get_last_lr()[0], amp)
 
                     if global_step % cfg.verbose == 0 and global_step > 0:
-                        callback_verification(global_step, backbone)
+                        callback_verification(global_step, backbone, cfg.head)
         
         elif cfg.head == "adaface":
             for _, (img, local_labels) in enumerate(train_loader):
@@ -233,7 +233,7 @@ def main(args):
                     callback_logging(global_step, loss_am, epoch, cfg.fp16, lr_scheduler.get_last_lr()[0], amp)
 
                     if global_step % cfg.verbose == 0 and global_step > 0:
-                        callback_verification(global_step, backbone)
+                        callback_verification(global_step, backbone, cfg.head)
         
  
 
