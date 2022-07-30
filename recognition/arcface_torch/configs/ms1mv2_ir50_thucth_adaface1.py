@@ -19,6 +19,7 @@ config.margin_list = (1.0, 0.5, 0.0)
 
 config.network = "ir_50"
 config.resume = False
+config.save_all_states = True
 config.output = None
 config.embedding_size = 512
 config.sample_rate = 1.
@@ -38,3 +39,5 @@ config.warmup_epoch = 0
 # config.val_targets = [ "agedb_30", "calfw", "cfp_ff", "cfp_fp", "lfw", "vgg2_fp"]
 config.val_targets = ["agedb_30", "cfp_fp", "lfw"] #load 1 bin for quick debugging
 
+# dataload numworkers
+config.num_workers = 2
