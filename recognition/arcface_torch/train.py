@@ -35,7 +35,6 @@ except KeyError:
         world_size=world_size,
     )
 
-
 def main(args):
 
     # get config
@@ -79,7 +78,8 @@ def main(args):
         cfg.m, 
         cfg.h, 
         cfg.s, 
-        cfg.t_alpha)
+        cfg.t_alpha,
+        cfg.original_margin)
     elif cfg.head == "oldhead": #author
         margin_loss = CombinedMarginLoss(
         64,
@@ -94,7 +94,7 @@ def main(args):
             module_partial_fc = AdaPartialFC(margin_loss=margin_loss, \
                 embedding_size=cfg.embedding_size, \
                 num_classes=cfg.num_classes, \
-                sample_rate=1., \
+                sample_rate=cfg.sample_rate, \
                 fp16=cfg.fp16)
 
             module_partial_fc.train().cuda()
@@ -173,10 +173,11 @@ def main(args):
         if isinstance(train_loader, DataLoader):
             train_loader.sampler.set_epoch(epoch)
         if cfg.head == "oldhead":
-            for _, (img, local_labels) in enumerate(train_loader):
+            for _, (img, local_labels) in enumerate(train_loader): #14GB to load batchsize 2
                 global_step += 1
                 local_embeddings = backbone(img)
-                loss: torch.Tensor = module_partial_fc(local_embeddings, local_labels, opt)
+                loss: torch.Tensor = module_partial_fc(local_embeddings, local_labels, opt) #7GB GPU MEM
+                # ForkedPdb().set_trace()
 
                 if cfg.fp16:
                     amp.scale(loss).backward()
@@ -194,12 +195,6 @@ def main(args):
 
                 with torch.no_grad():
                     loss_am.update(loss.item(), 1)
-                    if torch.isnan(loss_am):
-                        logging.info("="*50)
-                        logging.info("nan loss detected")
-                        logging.info("loss: ", loss)
-                        logging.info("local_labels: ", local_labels)
-                        import pdb; pdb.set_trace()
                     callback_logging(global_step, loss_am, epoch, cfg.fp16, lr_scheduler.get_last_lr()[0], amp)
 
                     if global_step % cfg.verbose == 0 and global_step > 0:
@@ -252,14 +247,17 @@ def main(args):
             torch.save(checkpoint, os.path.join(cfg.output, f"checkpoint_gpu_{rank}.pt"))
 
         if rank == 0:
-            path_module = os.path.join(cfg.output, "model.pt")
+            path_module = os.path.join(cfg.output, "model_%s.pt"%(epoch))
             torch.save(backbone.module.state_dict(), path_module)
+            if epoch>=2:
+                old_path_module = os.path.join(cfg.output, "model_%s.pt"%(epoch-2))
+                os.remove(old_path_module)
 
         if cfg.dali:
             train_loader.reset()
 
     if rank == 0:
-        path_module = os.path.join(cfg.output, "model.pt")
+        path_module = os.path.join(cfg.output, "model_last.pt")
         torch.save(backbone.module.state_dict(), path_module)
 
         from torch2onnx import convert_onnx

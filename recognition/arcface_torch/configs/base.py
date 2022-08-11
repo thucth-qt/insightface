@@ -6,6 +6,11 @@ from easydict import EasyDict as edict
 
 config = edict()
 
+#Head ada or arcface
+config.head = "adaface"
+config.original_margin = False
+
+
 # Margin Base Softmax
 config.margin_list = (1.0, 0.5, 0.0)
 config.network = "r50"

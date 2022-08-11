@@ -5,7 +5,7 @@ from typing import List
 
 import torch
 
-from eval import verification
+from . import verification
 from utils.utils_logging import AverageMeter
 # from torch.utils.tensorboard import SummaryWriter
 from torch import distributed

@@ -30,19 +30,21 @@ warnings.filterwarnings("ignore")
 
 parser = argparse.ArgumentParser(description='do ijb test')
 # general
-parser.add_argument('--model-prefix', default='', help='path to load model.')
+parser.add_argument('--model', default='', help='path to load model.')
 parser.add_argument('--image-path', default='', type=str, help='')
 parser.add_argument('--result-dir', default='.', type=str, help='')
 parser.add_argument('--batch-size', default=128, type=int, help='')
 parser.add_argument('--network', default='iresnet50', type=str, help='')
 parser.add_argument('--job', default='insightface', type=str, help='job name')
 parser.add_argument('--target', default='IJBC', type=str, help='target, set to IJBC or IJBB')
+parser.add_argument('--head', default='adaface', type=str, help='adaface or oldhead')
 args = parser.parse_args()
 
 target = args.target
-model_path = args.model_prefix
+model_path = args.model
 image_path = args.image_path
 result_dir = args.result_dir
+head = args.head
 gpu_id = None
 use_norm_score = True  # if Ture, TestMode(N1)
 use_detector_score = True  # if Ture, TestMode(D1)
@@ -52,13 +54,14 @@ batch_size = args.batch_size
 
 
 class Embedding(object):
-    def __init__(self, prefix, data_shape, batch_size=1):
+    def __init__(self, prefix, data_shape, head, batch_size=1):
         image_size = (112, 112)
         self.image_size = image_size
         weight = torch.load(prefix)
         resnet = get_model(args.network, dropout=0, fp16=False).cuda()
         resnet.load_state_dict(weight)
         model = torch.nn.DataParallel(resnet)
+        self.head = head
         self.model = model
         self.model.eval()
         src = np.array([
@@ -104,7 +107,11 @@ class Embedding(object):
     def forward_db(self, batch_data):
         imgs = torch.Tensor(batch_data).cuda()
         imgs.div_(255).sub_(0.5).div_(0.5)
-        feat = self.model(imgs)
+        if self.head == "adaface":
+            feat, norm = self.model(imgs)
+        elif self.head == "oldhead":
+            feat = self.model(imgs)
+        
         feat = feat.reshape([self.batch_size, 2 * feat.shape[1]])
         return feat.cpu().numpy()
 
@@ -163,7 +170,7 @@ def get_image_feature(img_path, files_list, model_path, epoch, gpu_id):
     img_feats = np.empty((len(files), 1024), dtype=np.float32)
 
     batch_data = np.empty((2 * batch_size, 3, 112, 112))
-    embedding = Embedding(model_path, data_shape, batch_size)
+    embedding = Embedding(model_path, data_shape, head, batch_size)
     for img_index, each_line in enumerate(files[:len(files) - rare_size]):
         name_lmk_score = each_line.strip().split(' ')
         img_name = os.path.join(img_path, name_lmk_score[0])
@@ -183,7 +190,7 @@ def get_image_feature(img_path, files_list, model_path, epoch, gpu_id):
         faceness_scores.append(name_lmk_score[-1])
 
     batch_data = np.empty((2 * rare_size, 3, 112, 112))
-    embedding = Embedding(model_path, data_shape, rare_size)
+    embedding = Embedding(model_path, data_shape, head, rare_size)
     for img_index, each_line in enumerate(files[len(files) - rare_size:]):
         name_lmk_score = each_line.strip().split(' ')
         img_name = os.path.join(img_path, name_lmk_score[0])

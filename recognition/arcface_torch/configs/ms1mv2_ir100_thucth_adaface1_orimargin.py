@@ -8,7 +8,7 @@ config = edict()
 
 #loss define
 config.head = "adaface" # "adaface" or "oldhead" 
-config.original_margin = False
+config.original_margin = True
 config.m = 0.4
 config.h = 0.333
 config.s = 64.
@@ -19,7 +19,7 @@ config.margin_list = (1.0, 0.5, 0.0)
 
 config.network = "ir_101"
 config.resume = False
-config.output = "ms1mv2_ir100_thucth_adaface1"
+config.output = "ms1mv2_ir100_thucth_adaface1_orimargin"
 config.embedding_size = 512
 config.sample_rate = 1.
 config.fp16 = True

@@ -116,12 +116,15 @@ class AdaAct(torch.nn.Module):
                  h=0.333,
                  s=64.,
                  t_alpha=1.0,
+                 original_margin = False
                  ):
         super(AdaAct, self).__init__()
         self.m = m 
         self.eps = 1e-3
         self.h = h
         self.s = s
+
+        self.original_margin = original_margin
         
         # ema prep
         self.t_alpha = t_alpha
@@ -192,7 +195,10 @@ class AdaAct(torch.nn.Module):
         gap_ = 1 - self.m*z - self.m - (self.m*z).cos()
         gap_ = gap_.reshape(-1)
 
-        final_target_logits = torch.where(theta + g_angular > 0, target_logits_add, target_logits+gap_)
+        if self.original_margin:
+            final_target_logits = target_logits_add
+        else:
+            final_target_logits = torch.where(theta + g_angular > 0, target_logits_add, target_logits+gap_)
 
         logits[index, labels[index].view(-1)] = final_target_logits
         logits = logits * self.s
