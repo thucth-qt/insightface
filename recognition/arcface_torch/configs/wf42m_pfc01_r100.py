@@ -5,6 +5,15 @@ from easydict import EasyDict as edict
 # mount -t tmpfs -o size=140G  tmpfs /train_tmp
 
 config = edict()
+
+#loss define
+config.head = "oldhead" # "adaface" or "oldhead" 
+config.m = 0.4
+config.h = 0.333
+config.s = 64.
+config.t_alpha = 0.01
+
+
 config.margin_list = (1.0, 0.0, 0.4)
 config.network = "r100"
 config.resume = False
@@ -19,7 +28,7 @@ config.lr = 0.1
 config.verbose = 10000
 config.dali = False # set False beacause of the dataset issue
 
-config.rec = "/share/team/thucth/data/FaceReg/faces_emore/webface42m"
+config.rec = "/mnt/data/WebFace42M_shufrec"
 config.num_classes = 2059906
 config.num_image = 42474557
 config.num_epoch = 20

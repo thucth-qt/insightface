@@ -224,7 +224,7 @@ def load_bin(path, image_size):
     return data_list, issame_list
 
 @torch.no_grad()
-def test(data_set, backbone, batch_size, nfolds=10):
+def test(data_set, backbone, batch_size, nfolds=10, typehead=None):
     print('testing verification..')
     data_list = data_set[0]
     issame_list = data_set[1]
@@ -240,7 +240,12 @@ def test(data_set, backbone, batch_size, nfolds=10):
             _data = data[bb - batch_size: bb]
             time0 = datetime.datetime.now()
             img = ((_data / 255) - 0.5) / 0.5
-            net_out, _ = backbone(img)
+            if typehead=="oldhead":
+                net_out = backbone(img)
+            elif typehead=="adaface":
+                net_out, _ = backbone(img)
+            else:
+                raise
             _embeddings = net_out.detach().cpu().numpy()
             time_now = datetime.datetime.now()
             diff = time_now - time0

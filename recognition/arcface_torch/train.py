@@ -17,6 +17,8 @@ from utils.utils_callbacks import CallBackLogging, CallBackVerification
 from utils.utils_config import get_config
 from utils.utils_logging import AverageMeter, init_logging
 from utils.utils_distributed_sampler import setup_seed
+from utils.set_grad import set_grad_bb
+import gc
 
 assert torch.__version__ >= "1.9.0", "In order to enjoy the features of the new torch, \
 we have upgraded the torch to 1.9.0. torch before than 1.9.0 may not work in the future."
@@ -34,7 +36,6 @@ except KeyError:
         rank=rank,
         world_size=world_size,
     )
-
 
 def main(args):
 
@@ -64,22 +65,28 @@ def main(args):
     )
 
     backbone = get_model(
-        cfg.network, dropout=0.0, fp16=cfg.fp16, num_features=cfg.embedding_size).cuda()
+        cfg.network, dropout=0.0, fp16=cfg.fp16, num_features=cfg.embedding_size)
+
+    if cfg.finetune_bb:
+        backbone.load_state_dict(torch.load(cfg.finetune_bb,map_location='cpu'))
+    backbone = backbone.cuda()
 
     backbone = torch.nn.parallel.DistributedDataParallel(
         module=backbone, broadcast_buffers=False, device_ids=[args.local_rank], bucket_cap_mb=16,
         find_unused_parameters=True)
 
-    backbone.train()
+    backbone.train()  
     # FIXME using gradient checkpoint if there are some unused parameters will cause error
-    backbone._set_static_graph()
+    if not cfg.finetune_bb:
+        backbone._set_static_graph()
 
     if cfg.head == "adaface": #new adaface
         margin_loss = AdaAct( 
         cfg.m, 
         cfg.h, 
         cfg.s, 
-        cfg.t_alpha)
+        cfg.t_alpha,
+        cfg.original_margin)
     elif cfg.head == "oldhead": #author
         margin_loss = CombinedMarginLoss(
         64,
@@ -94,7 +101,7 @@ def main(args):
             module_partial_fc = AdaPartialFC(margin_loss=margin_loss, \
                 embedding_size=cfg.embedding_size, \
                 num_classes=cfg.num_classes, \
-                sample_rate=1., \
+                sample_rate=cfg.sample_rate, \
                 fp16=cfg.fp16)
 
             module_partial_fc.train().cuda()
@@ -127,7 +134,7 @@ def main(args):
         raise
 
     cfg.total_batch_size = cfg.batch_size * world_size
-    cfg.warmup_step = cfg.num_image // cfg.total_batch_size * cfg.warmup_epoch
+    cfg.warmup_step = int(cfg.num_image // cfg.total_batch_size * cfg.warmup_epoch)
     cfg.total_step = cfg.num_image // cfg.total_batch_size * cfg.num_epoch
 
     lr_scheduler = PolyScheduler(
@@ -147,9 +154,22 @@ def main(args):
         backbone.module.load_state_dict(dict_checkpoint["state_dict_backbone"])
         module_partial_fc.load_state_dict(dict_checkpoint["state_dict_softmax_fc"])
         opt.load_state_dict(dict_checkpoint["state_optimizer"])
+
         lr_scheduler.load_state_dict(dict_checkpoint["state_lr_scheduler"])
         del dict_checkpoint
+        gc.collect()
 
+    if cfg.finetune_full:
+
+        dict_checkpoint = torch.load(os.path.join(cfg.output, f"checkpoint_gpu_{rank}.pt"))
+        backbone.module.load_state_dict(dict_checkpoint["state_dict_backbone"])
+        module_partial_fc.load_state_dict(dict_checkpoint["state_dict_softmax_fc"])
+        # opt.load_state_dict(dict_checkpoint["state_optimizer"])
+        
+        # for g in opt.param_groups:
+        #     g['lr'] = cfg.lr_finetune
+        del dict_checkpoint
+        gc.collect()
     for key, value in cfg.items():
         num_space = 25 - len(key)
         logging.info(": " + key + " " * num_space + str(value))
@@ -173,10 +193,11 @@ def main(args):
         if isinstance(train_loader, DataLoader):
             train_loader.sampler.set_epoch(epoch)
         if cfg.head == "oldhead":
-            for _, (img, local_labels) in enumerate(train_loader):
+            for _, (img, local_labels) in enumerate(train_loader): #14GB to load batchsize 2
                 global_step += 1
                 local_embeddings = backbone(img)
-                loss: torch.Tensor = module_partial_fc(local_embeddings, local_labels, opt)
+                loss: torch.Tensor = module_partial_fc(local_embeddings, local_labels, opt) #7GB GPU MEM
+                # ForkedPdb().set_trace()
 
                 if cfg.fp16:
                     amp.scale(loss).backward()
@@ -194,16 +215,10 @@ def main(args):
 
                 with torch.no_grad():
                     loss_am.update(loss.item(), 1)
-                    if torch.isnan(loss_am):
-                        logging.info("="*50)
-                        logging.info("nan loss detected")
-                        logging.info("loss: ", loss)
-                        logging.info("local_labels: ", local_labels)
-                        import pdb; pdb.set_trace()
                     callback_logging(global_step, loss_am, epoch, cfg.fp16, lr_scheduler.get_last_lr()[0], amp)
 
                     if global_step % cfg.verbose == 0 and global_step > 0:
-                        callback_verification(global_step, backbone)
+                        callback_verification(global_step, backbone, cfg.head)
         
         elif cfg.head == "adaface":
             for _, (img, local_labels) in enumerate(train_loader):
@@ -233,13 +248,9 @@ def main(args):
                     callback_logging(global_step, loss_am, epoch, cfg.fp16, lr_scheduler.get_last_lr()[0], amp)
 
                     if global_step % cfg.verbose == 0 and global_step > 0:
-                        callback_verification(global_step, backbone)
+                        callback_verification(global_step, backbone, cfg.head)
+
         
- 
-
-
-
-
         if cfg.save_all_states:
             checkpoint = {
                 "epoch": epoch + 1,
@@ -252,14 +263,17 @@ def main(args):
             torch.save(checkpoint, os.path.join(cfg.output, f"checkpoint_gpu_{rank}.pt"))
 
         if rank == 0:
-            path_module = os.path.join(cfg.output, "model.pt")
+            path_module = os.path.join(cfg.output, "model_%s.pt"%(epoch))
             torch.save(backbone.module.state_dict(), path_module)
+            if epoch>=2:
+                old_path_module = os.path.join(cfg.output, "model_%s.pt"%(epoch-2))
+                os.remove(old_path_module)
 
         if cfg.dali:
             train_loader.reset()
 
     if rank == 0:
-        path_module = os.path.join(cfg.output, "model.pt")
+        path_module = os.path.join(cfg.output, "model_last.pt")
         torch.save(backbone.module.state_dict(), path_module)
 
         from torch2onnx import convert_onnx

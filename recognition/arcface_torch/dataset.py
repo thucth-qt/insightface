@@ -32,6 +32,7 @@ def get_dataloader(
     # Synthetic
     if root_dir == "synthetic":
         train_set = SyntheticDataset()
+        dali = False
 
     # Mxnet RecordIO
     elif os.path.exists(rec) and os.path.exists(idx):
@@ -106,7 +107,7 @@ class DataLoaderX(DataLoader):
 
     def __init__(self, local_rank, **kwargs):
         super(DataLoaderX, self).__init__(**kwargs)
-        self.stream = torch.cuda.Stream(local_rank)
+        self.stream = torch.cuda.Stream(local_rank) #2657.7 MiB
         self.local_rank = local_rank
 
     def __iter__(self):
@@ -145,12 +146,12 @@ class MXFaceDataset(Dataset):
         self.local_rank = local_rank
         path_imgrec = os.path.join(root_dir, 'train.rec')
         path_imgidx = os.path.join(root_dir, 'train.idx')
-        self.imgrec = mx.recordio.MXIndexedRecordIO(path_imgidx, path_imgrec, 'r')
+        self.imgrec = mx.recordio.MXIndexedRecordIO(path_imgidx, path_imgrec, 'r') #5721.6 MiB
         s = self.imgrec.read_idx(0)
         header, _ = mx.recordio.unpack(s)
         if header.flag > 0:
             self.header0 = (int(header.label[0]), int(header.label[1]))
-            self.imgidx = np.array(range(1, int(header.label[0])))
+            self.imgidx = np.array(range(1, int(header.label[0]))) #328.3 MiB 
         else:
             self.imgidx = np.array(list(self.imgrec.keys))
 

@@ -6,11 +6,17 @@ from easydict import EasyDict as edict
 
 config = edict()
 
+#Head ada or arcface
+config.head = "adaface"
+config.original_margin = False
+
+
 # Margin Base Softmax
 config.margin_list = (1.0, 0.5, 0.0)
 config.network = "r50"
 config.resume = False
-config.save_all_states = False
+config.finetune_bb = None
+config.save_all_states = True
 config.output = "ms1mv3_arcface_r50"
 
 config.embedding_size = 512
@@ -34,11 +40,13 @@ config.weight_decay = 5e-4
 # config.weight_decay = 0.1
 
 config.verbose = 2000
-config.frequent = 10
+config.frequent = 100
 
 # For Large Sacle Dataset, such as WebFace42M
 config.dali = False # set False beacause of the dataset issue 
 
+# Gradient ACC
+config.gradient_acc = 1
 
 # setup seed
 config.seed = 2048

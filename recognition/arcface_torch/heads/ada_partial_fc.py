@@ -158,7 +158,7 @@ class PartialFCAdamW(torch.nn.Module):
 
         embeddings = torch.cat(_list_embeddings)
         labels = torch.cat(_gather_labels)
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         labels = labels.view(-1, 1)
         index_positive = (self.class_start <= labels) & (
             labels < self.class_start + self.num_local
@@ -367,11 +367,65 @@ class AdaPartialFC(torch.nn.Module):
         self.is_updated: bool = True
         self.init_weight_update: bool = True
 
-        self.weight_activated = torch.nn.Parameter(torch.normal(0, 0.01, (self.num_local, embedding_size)))
+        # self.weight_activated = torch.nn.Parameter(torch.normal(0, 0.01, (self.num_local, embedding_size)))
+        if self.sample_rate < 1:
+            self.register_buffer("weight",
+                tensor=torch.normal(0, 0.01, (self.num_local, embedding_size)))
+            self.register_buffer("weight_mom",
+                tensor=torch.zeros_like(self.weight))
+            self.register_parameter("weight_activated",
+                param=torch.nn.Parameter(torch.empty(0, 0)))
+            self.register_buffer("weight_activated_mom",
+                tensor=torch.empty(0, 0))
+            self.register_buffer("weight_index",
+                tensor=torch.empty(0, 0))
+        else:
+            self.weight_activated = torch.nn.Parameter(torch.normal(0, 0.01, (self.num_local, embedding_size)))
 
         # margin_loss
         if isinstance(margin_loss, Callable):
             self.margin_softmax = margin_loss
+        else:
+            raise
+    @torch.no_grad()
+    def sample(self, 
+        labels: torch.Tensor, 
+        index_positive: torch.Tensor, 
+        optimizer: torch.optim.Optimizer):
+        """
+        This functions will change the value of labels
+
+        Parameters:
+        -----------
+        labels: torch.Tensor
+            pass
+        index_positive: torch.Tensor
+            pass
+        optimizer: torch.optim.Optimizer
+            pass
+        """
+        positive = torch.unique(labels[index_positive], sorted=True).cuda()
+        if self.num_sample - positive.size(0) >= 0:
+            perm = torch.rand(size=[self.num_local]).cuda()
+            perm[positive] = 2.0
+            index = torch.topk(perm, k=self.num_sample)[1].cuda()
+            index = index.sort()[0].cuda()
+        else:
+            index = positive
+        self.weight_index = index
+
+        labels[index_positive] = torch.searchsorted(index, labels[index_positive])
+        
+        self.weight_activated = torch.nn.Parameter(self.weight[self.weight_index])
+        self.weight_activated_mom = self.weight_mom[self.weight_index]
+        
+        if isinstance(optimizer, torch.optim.SGD):
+            # TODO the params of partial fc must be last in the params list
+            optimizer.state.pop(optimizer.param_groups[-1]["params"][0], None)
+            optimizer.param_groups[-1]["params"][0] = self.weight_activated
+            optimizer.state[self.weight_activated][
+                "momentum_buffer"
+            ] = self.weight_activated_mom
         else:
             raise
 
@@ -382,6 +436,10 @@ class AdaPartialFC(torch.nn.Module):
         if self.init_weight_update:
             self.init_weight_update = False
             return
+
+        if self.sample_rate < 1:
+            self.weight[self.weight_index] = self.weight_activated
+            self.weight_mom[self.weight_index] = self.weight_activated_mom
 
     def forward(
         self,
@@ -448,23 +506,12 @@ class AdaPartialFC(torch.nn.Module):
             labels < self.class_start + self.num_local
         )
         norms = norms.view(-1, 1)
-        # print("="*100)
-        # print("rank: ", distributed.get_rank())
-        # print("index_positive: ", index_positive)
-        # print("index_positive.shape: ", index_positive.shape)
-        # print("self.class_start: ", self.class_start)
-        # print("self.num_local: ", self.num_local)
-        # print("local_embeddings.shape: ", local_embeddings.shape)
-        # print("norm.shape: ", local_norms.shape)
-        # print("labels.shape: ", labels.shape)
-        # # print("labels: ", labels)
-        # print("="*100)
-        # import pdb; pdb.set_trace()
-
-
+       
         labels[~index_positive] = -1
         labels[index_positive] -= self.class_start
         
+        if self.sample_rate < 1:
+            self.sample(labels, index_positive, optimizer)
         
         with torch.cuda.amp.autocast(self.fp16):
             norm_embeddings = normalize(embeddings)
@@ -498,3 +545,14 @@ class AdaPartialFC(torch.nn.Module):
         else:
             destination["weight"] = self.weight_activated.data.detach()
         return destination
+    
+    def load_state_dict(self, state_dict, strict: bool = True):
+        if self.sample_rate < 1:
+            self.weight = state_dict["weight"].to(self.weight.device)
+            self.weight_mom.zero_()
+            self.weight_activated.data.zero_()
+            self.weight_activated_mom.zero_()
+            self.weight_index.zero_()
+        else:
+            self.weight_activated.data = state_dict["weight"].to(self.weight_activated.data.device)
+
