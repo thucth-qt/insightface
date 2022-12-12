@@ -19,18 +19,25 @@ config.network = "r100"
 config.resume = False
 config.output = None
 config.embedding_size = 512
-config.sample_rate = 0.1
+config.sample_rate = 1.
 config.fp16 = True
 config.momentum = 0.9
 config.weight_decay = 5e-4
-config.batch_size = 128
+config.batch_size = 2
 config.lr = 0.1
-config.verbose = 10000
+config.verbose = 100
 config.dali = False # set False beacause of the dataset issue
 
 config.rec = "/mnt/data/WebFace42M_shufrec"
-config.num_classes = 2059906
-config.num_image = 42474557
+config.num_classes = 2130631
+config.num_image = 43003987
+
+# config.rec = "/mnt/data/MS1MV2"
+# config.num_classes = 85742
+# config.num_image = 5822653
+
+
 config.num_epoch = 20
 config.warmup_epoch = 0
-config.val_targets = ['lfw', 'cfp_fp', "agedb_30"]
+config.val_targets = ['lfw']
+config.workers = 1

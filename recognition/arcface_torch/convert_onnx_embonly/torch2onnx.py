@@ -42,10 +42,10 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser(description='PyTorch to onnx')
-    parser.add_argument('input', type=str, help='input backbone.pth file or path')
-    parser.add_argument('--output', type=str, default=None, help='output onnx path')
+    parser.add_argument('--input', type=str, default="/mnt/data/weights/adaface/wf42m10faces_pfc10_ir101_adaface_originalloss/model_5.pt", help='input backbone.pth file or path')
+    parser.add_argument('--output', type=str, default="/mnt/data/weights/adaface/wf42m10faces_pfc10_ir101_adaface_originalloss/model_5_embonly.pt", help='output onnx path')
     parser.add_argument('--simplify', type=bool, default=False, help='onnx simplify')
-    parser.add_argument('--network', type=str, default=None, help='backbone network')
+    parser.add_argument('--network', type=str, default="ir_101", help='backbone network')
 
     args = parser.parse_args()
     input_file = args.input

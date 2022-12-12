@@ -10,6 +10,10 @@
 
 ./scripts/run_debug5.sh configs/wf42m_debug_ada
 
+./scripts/train_wf42m_customloss.sh
+
+./scripts/train_wf42m_customloss_cont.sh: do lr cao + it epoch => finetune them max 20 epoch
+
 
 ##eval 
 
@@ -63,3 +67,14 @@ PROGRESS
 
     * best sweet pot:
     adaface  ir_101, batchsize 54, sample_rate 0.3
+
+
+
+=====================================
+change to save MEM 
+1. 
+/home/thucth/thucth/project/insightface/recognition/arcface_torch/dataset.py:78
+max_prefetch=4 -> 1
+
+Hotfix for webface42m10faces
+/home/thucth/thucth/project/insightface/recognition/arcface_torch/dataset.py:152
