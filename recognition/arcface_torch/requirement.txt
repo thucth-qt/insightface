@@ -12,3 +12,7 @@ matplotlib
 scikit-learn
 scipy
 seaborn
+opencv-python
+scikit-image
+menpo
+prettytable
