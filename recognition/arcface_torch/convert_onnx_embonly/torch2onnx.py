@@ -23,10 +23,19 @@ def convert_onnx(net, path_module, output, opset=11, simplify=False):
     img = img.transpose((2, 0, 1))
     img = torch.from_numpy(img).unsqueeze(0).float()
 
-    weight = torch.load(path_module)
+    weight = torch.load(path_module, map_location=torch.device('cpu'))
     net.load_state_dict(weight, strict=True)
     net.eval()
-    torch.onnx.export(net, img, output, input_names=["data"], keep_initializers_as_inputs=False, verbose=False, opset_version=opset)
+    torch.onnx.export(net, \
+                        img, \
+                        output, \
+                        input_names=["data"], \
+                        output_names=["embedding"], \
+                        keep_initializers_as_inputs=False, \
+                        verbose=False, \
+                        dynamic_axes={'data': {0: 'batch_size'}, 
+                        'embedding': {0: 'batch_size'}}, \
+                        opset_version=opset)
     model = onnx.load(output)
     graph = model.graph
     graph.input[0].type.tensor_type.shape.dim[0].dim_param = 'None'
