@@ -12,7 +12,9 @@ from torch.nn import PReLU
 import os
 
 def build_model(model_name='ir_50', fp16=False):
-    if model_name == 'ir_101':
+    if model_name == 'ir_200':
+        return IR_200(input_size=(112,112), fp16=fp16)
+    elif model_name == 'ir_101':
         return IR_101(input_size=(112,112), fp16=fp16)
     elif model_name == 'ir_50':
         return IR_50(input_size=(112,112), fp16=fp16)

@@ -7,6 +7,7 @@ import torch
 from torch import distributed
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from torchsummary import summary
 
 from backbones import get_model
 from dataset import get_dataloader
@@ -19,6 +20,9 @@ from utils.utils_logging import AverageMeter, init_logging
 from utils.utils_distributed_sampler import setup_seed
 from utils.set_grad import set_grad_bb
 import gc
+from psutil import *
+import psutil
+import sys
 
 assert torch.__version__ >= "1.9.0", "In order to enjoy the features of the new torch, \
 we have upgraded the torch to 1.9.0. torch before than 1.9.0 may not work in the future."
@@ -26,16 +30,25 @@ we have upgraded the torch to 1.9.0. torch before than 1.9.0 may not work in the
 try:
     world_size = int(os.environ["WORLD_SIZE"])
     rank = int(os.environ["RANK"])
-    distributed.init_process_group("nccl")
+    distributed.init_process_group("gloo")
 except KeyError:
     world_size = 1
     rank = 0
     distributed.init_process_group(
-        backend="nccl",
+        backend="gloo",
         init_method="tcp://127.0.0.1:12584",
         rank=rank,
         world_size=world_size,
     )
+
+def check_overload(threshold_mem=80, threshold_cpu=80):
+    vm = psutil.virtual_memory().percent    
+    cpu = psutil.cpu_percent()
+    if vm > threshold_mem:
+        return True
+    if cpu > threshold_cpu:
+        return True
+    return False
 
 def main(args):
 
@@ -54,7 +67,7 @@ def main(args):
         if rank == 0
         else None
     )
-
+    # import pdb; pdb.set_trace()
     train_loader = get_dataloader(
         cfg.rec,
         args.local_rank,
@@ -63,23 +76,30 @@ def main(args):
         cfg.seed,
         cfg.num_workers
     )
-
+    # import pdb; pdb.set_trace()
     backbone = get_model(
         cfg.network, dropout=0.0, fp16=cfg.fp16, num_features=cfg.embedding_size)
-
-    if cfg.finetune_bb:
-        backbone.load_state_dict(torch.load(cfg.finetune_bb,map_location='cpu'))
     backbone = backbone.cuda()
+    if cfg.finetune_bb:
+        state_dict = torch.load(cfg.finetune_bb,map_location='cuda')
+        backbone.load_state_dict(state_dict)
 
     backbone = torch.nn.parallel.DistributedDataParallel(
         module=backbone, broadcast_buffers=False, device_ids=[args.local_rank], bucket_cap_mb=16,
-        find_unused_parameters=True)
+        find_unused_parameters=False)
 
-    backbone.train()  
+    if cfg.finetune_bb:
+        # Set the evaluation mode for the DDP module
+        backbone.eval()
+        # Freeze the trainable parameters of the backbone
+        for param in backbone.parameters():
+            param.requires_grad_(False)
+    else:
+        backbone.train()  
     # FIXME using gradient checkpoint if there are some unused parameters will cause error
     if not cfg.finetune_bb:
         backbone._set_static_graph()
-
+    # import pdb; pdb.set_trace()
     if cfg.head == "adaface": #new adaface
         margin_loss = AdaAct( 
         cfg.m, 
@@ -148,6 +168,7 @@ def main(args):
     start_epoch = 0
     global_step = 0
     if cfg.resume:
+        print("[RESUME].....")
         dict_checkpoint = torch.load(os.path.join(cfg.output, f"checkpoint_gpu_{rank}.pt"))
         start_epoch = dict_checkpoint["epoch"]
         global_step = dict_checkpoint["global_step"]
@@ -160,9 +181,11 @@ def main(args):
         gc.collect()
 
     if cfg.finetune_full:
-
+        print("[FINETUNE FULL].....")
         dict_checkpoint = torch.load(os.path.join(cfg.output, f"checkpoint_gpu_{rank}.pt"))
         backbone.module.load_state_dict(dict_checkpoint["state_dict_backbone"])
+        # backbone.eval().cuda()
+        # backbone.eval()
         module_partial_fc.load_state_dict(dict_checkpoint["state_dict_softmax_fc"])
         # opt.load_state_dict(dict_checkpoint["state_optimizer"])
         
@@ -189,6 +212,17 @@ def main(args):
     amp = torch.cuda.amp.grad_scaler.GradScaler(growth_interval=100)
 
     for epoch in range(start_epoch, cfg.num_epoch):
+        if check_overload():
+            checkpoint = {
+                "epoch": epoch + 1,
+                "global_step": global_step,
+                "state_dict_backbone": backbone.module.state_dict(),
+                "state_dict_softmax_fc": module_partial_fc.state_dict(),
+                "state_optimizer": opt.state_dict(),
+                "state_lr_scheduler": lr_scheduler.state_dict()
+            }
+            torch.save(checkpoint, os.path.join(cfg.output, f"checkpoint_gpu_{rank}.pt"))
+            sys.exit(0)
 
         if isinstance(train_loader, DataLoader):
             train_loader.sampler.set_epoch(epoch)
@@ -222,6 +256,17 @@ def main(args):
         
         elif cfg.head == "adaface":
             for _, (img, local_labels) in enumerate(train_loader):
+                if check_overload():
+                    checkpoint = {
+                        "epoch": epoch + 1,
+                        "global_step": global_step,
+                        "state_dict_backbone": backbone.module.state_dict(),
+                        "state_dict_softmax_fc": module_partial_fc.state_dict(),
+                        "state_optimizer": opt.state_dict(),
+                        "state_lr_scheduler": lr_scheduler.state_dict()
+                    }
+                    torch.save(checkpoint, os.path.join(cfg.output, f"checkpoint_gpu_{rank}.pt"))
+                    sys.exit(0)
                 global_step += 1
                 local_embeddings, norm = backbone(img)
                 
@@ -267,7 +312,7 @@ def main(args):
             torch.save(backbone.module.state_dict(), path_module)
             if epoch>=2:
                 old_path_module = os.path.join(cfg.output, "model_%s.pt"%(epoch-2))
-                os.remove(old_path_module)
+                # os.remove(old_path_module)
 
         if cfg.dali:
             train_loader.reset()

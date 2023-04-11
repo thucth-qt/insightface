@@ -13,7 +13,6 @@ from torch.nn import ReLU, Sigmoid
 from torch.nn import Module
 from torch.nn import PReLU
 from backbone_adaface_embonly import build_model
-
     
 def convert_onnx(net, path_module, output, opset=11, simplify=False):
     assert isinstance(net, torch.nn.Module)
@@ -45,6 +44,9 @@ def convert_onnx(net, path_module, output, opset=11, simplify=False):
         assert check, "Simplified ONNX model could not be validated"
     onnx.save(model, output)
 
+    #export torch jit 
+    net_jit = torch.jit.script(net)
+    torch.jit.save(net_jit,output.replace(".onnx",".jit.pt"))
     
 if __name__ == '__main__':
     import os
@@ -62,7 +64,7 @@ if __name__ == '__main__':
         input_file = os.path.join(input_file, "model.pt")
     assert os.path.exists(input_file)
 
-    backbone_torch_only_emb= build_model(model_name=args.network, fp16=True)
+    backbone_torch_only_emb= build_model(model_name=args.network, fp16=False)
     if args.output is None:
         args.output = os.path.join(os.path.dirname(args.input), "model.onnx")
     convert_onnx(backbone_torch_only_emb, input_file, args.output, simplify=args.simplify)

@@ -147,18 +147,29 @@ class MXFaceDataset(Dataset):
         path_imgrec = os.path.join(root_dir, 'train.rec')
         path_imgidx = os.path.join(root_dir, 'train.idx')
         self.imgrec = mx.recordio.MXIndexedRecordIO(path_imgidx, path_imgrec, 'r') #5721.6 MiB
+        
         s = self.imgrec.read_idx(0)
         header, _ = mx.recordio.unpack(s)
         
-#         if header.flag > 0:
-#             self.header0 = (int(header.label[0]), int(header.label[1]))
-#             self.imgidx = np.array(range(1, int(header.label[0]))) #328.3 MiB 
-#         else:
-#             self.imgidx = np.array(list(self.imgrec.keys))
+        if header.flag > 0:
+            
+            self.header0 = (int(header.label[0]), int(header.label[1]))
+            self.imgidx = np.array(range(1, int(header.label[0]))) #328.3 MiB 
+        else:
+            self.imgidx = np.array(list(self.imgrec.keys))
         
+        #hardcorded if header in internal record got error    
+        # self.header0 = (100,28)
+        # self.imgidx = np.array(range(1,99))
+        # import pdb; pdb.set_trace()
+        
+        #hardcorded if header in internal record got error    
+        # self.header0 = (1075669,1416236)
+        # self.imgidx = np.array(range(1,1075669))
+
         #hardcorded because header in webface42m10faces got error    
-        self.header0 = (37375383,38517230)
-        self.imgidx = np.array(range(1,37375383)) 
+        # self.header0 = (37375383,38517230)
+        # self.imgidx = np.array(range(1,37375383)) 
         
     def __getitem__(self, index):
         try:
