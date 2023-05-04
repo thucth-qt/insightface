@@ -30,16 +30,19 @@ we have upgraded the torch to 1.9.0. torch before than 1.9.0 may not work in the
 try:
     world_size = int(os.environ["WORLD_SIZE"])
     rank = int(os.environ["RANK"])
+    localrank = int(os.environ['LOCAL_RANK'])
     distributed.init_process_group("gloo")
 except KeyError:
     world_size = 1
     rank = 0
+    localrank=0
     distributed.init_process_group(
         backend="gloo",
         init_method="tcp://127.0.0.1:12584",
         rank=rank,
         world_size=world_size,
     )
+
 
 def check_overload(threshold_mem=80, threshold_cpu=80):
     vm = psutil.virtual_memory().percent    
@@ -57,7 +60,7 @@ def main(args):
     # global control random seed
     setup_seed(seed=cfg.seed, cuda_deterministic=False)
 
-    torch.cuda.set_device(args.local_rank)
+    torch.cuda.set_device(localrank)
 
     os.makedirs(cfg.output, exist_ok=True)
     init_logging(rank, cfg.output)
@@ -70,7 +73,7 @@ def main(args):
     # import pdb; pdb.set_trace()
     train_loader = get_dataloader(
         cfg.rec,
-        args.local_rank,
+        localrank,
         cfg.batch_size,
         cfg.dali,
         cfg.seed,
@@ -85,7 +88,7 @@ def main(args):
         backbone.load_state_dict(state_dict)
 
     backbone = torch.nn.parallel.DistributedDataParallel(
-        module=backbone, broadcast_buffers=False, device_ids=[args.local_rank], bucket_cap_mb=16,
+        module=backbone, broadcast_buffers=False, device_ids=[localrank], bucket_cap_mb=16,
         find_unused_parameters=False)
 
     if cfg.finetune_bb:
@@ -332,5 +335,5 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Distributed Arcface Training in Pytorch")
     parser.add_argument("config", type=str, help="py config file")
-    parser.add_argument("--local_rank", type=int, default=0, help="local_rank")
+    # parser.add_argument("--local_rank", type=int, default=0, help="local_rank")
     main(parser.parse_args())
