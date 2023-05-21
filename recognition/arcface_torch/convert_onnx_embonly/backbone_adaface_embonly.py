@@ -330,8 +330,9 @@ class Backbone(Module):
         initialize_weights(self.modules())
 
     def forward(self, x):
-        with torch.cuda.amp.autocast(self.fp16):
-
+        # with torch.cuda.amp.autocast(self.fp16):
+        with torch.cuda.amp.autocast(enabled=False):
+        
             # current code only supports one extra image
             # it comes with a extra dimension for number of extra image. We will just squeeze it out for now
             x = self.input_layer(x)
@@ -339,9 +340,9 @@ class Backbone(Module):
             for idx, module in enumerate(self.body):
                 x = module(x)
 
-        x = self.output_layer(x.float() if self.fp16 else x)
-        norm = torch.norm(x, 2, 1, True)
-        output = torch.div(x, norm)
+            x = self.output_layer(x.float() if self.fp16 else x)
+            norm = torch.norm(x, 2, 1, True)
+            output = torch.div(x, norm)
 
         return output
 

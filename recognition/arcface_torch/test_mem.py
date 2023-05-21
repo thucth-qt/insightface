@@ -1,26 +1,28 @@
-import torch 
-from memory_profiler import profile
-import sys
-from threading import Thread
+# %%
+from psutil import *
+import psutil
+import time
+import csv 
 
-class Child(Thread):
-    @profile
-    def run(self):
-        a_child = torch.ones((1000,100))
-        b_child = torch.ones((1000,1000))
-        c_child = torch.ones((1000,10000))
-        d_child = torch.ones((1000,100000))    
-@profile
-def main():
-    a = torch.ones((1000,100))
-    b = torch.ones((1000,1000))
-    c = torch.ones((1000,10000))
-    d = torch.ones((1000,100000))
+with open("/home/thucth/Biometrics/insightface/recognition/arcface_torch/TRACKING1.csv", "a") as f:
+    csv_writer = csv.writer(f)
+    csv_writer.writerow(["Time", "MEM Percentage", "CPU Percentage"])
+times = 0
+while True:
+    vm = psutil.virtual_memory()    
+    cpu = psutil.cpu_percent()
+    if vm.percent > 60:
+        print("Exit because memory usage is high")
+        break
+    print(f"mem is good - using {vm.percent}%")
+    
+    
+    with open("/home/thucth/Biometrics/insightface/recognition/arcface_torch/TRACKING1.csv", "a") as f:
+        csv_writer = csv.writer(f)
+        csv_writer.writerow([time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()), vm.percent, cpu])
+    
+    time.sleep(30)
+    times+=1
+    if times > 100000:
+        break
 
-    child = Child()
-    child.start()
-    child.join()
-
-    return
-if __name__ == "__main__":
-    main()

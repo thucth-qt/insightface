@@ -113,13 +113,11 @@ class RecBuilder():
 
         with open(os.path.join(self.path, 'description'), 'w') as f:
             
-            f.write("""
-            num_imgs: {},
-            data index: [{} - {})
-            num_cls: {}
-            header_index: {}
-            meta_index: [{}-{})
-            """.format(id_idx-1, 1, id_idx, self.label_stat[1]+1, 0, id_idx, self.widx))
+            f.write(f'''
+            num_imgs: {id_idx-1},
+            data index: [{1} - {id_idx})
+            num_cls: {self.label_stat[1]+1}
+            header_index: {0,}
+            meta_index: [{id_idx}-{self.widx})''')
            
-
         self.writer.close()
