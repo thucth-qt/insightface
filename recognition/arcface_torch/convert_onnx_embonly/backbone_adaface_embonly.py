@@ -11,19 +11,23 @@ from torch.nn import Module
 from torch.nn import PReLU
 import os
 
+
 def build_model(model_name='ir_50', fp16=False):
-    if model_name == 'ir_101':
-        return IR_101(input_size=(112,112), fp16=fp16)
+    if model_name == 'ir_200':
+        return IR_200(input_size=(112, 112), fp16=fp16)
+    elif model_name == 'ir_101':
+        return IR_101(input_size=(112, 112), fp16=fp16)
     elif model_name == 'ir_50':
-        return IR_50(input_size=(112,112), fp16=fp16)
+        return IR_50(input_size=(112, 112), fp16=fp16)
     elif model_name == 'ir_se_50':
-        return IR_SE_50(input_size=(112,112), fp16=fp16)
+        return IR_SE_50(input_size=(112, 112), fp16=fp16)
     elif model_name == 'ir_34':
-        return IR_34(input_size=(112,112), fp16=fp16)
+        return IR_34(input_size=(112, 112), fp16=fp16)
     elif model_name == 'ir_18':
-        return IR_18(input_size=(112,112), fp16=fp16)
+        return IR_18(input_size=(112, 112), fp16=fp16)
     else:
         raise ValueError('not a correct model name', model_name)
+
 
 def initialize_weights(modules):
     """ Weight initilize, conv2d and linear is initialized with kaiming_normal
@@ -49,6 +53,7 @@ def initialize_weights(modules):
 class Flatten(Module):
     """ Flat tensor
     """
+
     def forward(self, input):
         return input.view(input.size(0), -1)
 
@@ -56,6 +61,7 @@ class Flatten(Module):
 class LinearBlock(Module):
     """ Convolution block without no-linear activation layer
     """
+
     def __init__(self, in_c, out_c, kernel=(1, 1), stride=(1, 1), padding=(0, 0), groups=1):
         super(LinearBlock, self).__init__()
         self.conv = Conv2d(in_c, out_c, kernel, stride, padding, groups=groups, bias=False)
@@ -70,6 +76,7 @@ class LinearBlock(Module):
 class GNAP(Module):
     """ Global Norm-Aware Pooling block
     """
+
     def __init__(self, in_c):
         super(GNAP, self).__init__()
         self.bn1 = BatchNorm2d(in_c, affine=False)
@@ -91,6 +98,7 @@ class GNAP(Module):
 class GDC(Module):
     """ Global Depthwise Convolution block
     """
+
     def __init__(self, in_c, embedding_size):
         super(GDC, self).__init__()
         self.conv_6_dw = LinearBlock(in_c, in_c,
@@ -113,6 +121,7 @@ class GDC(Module):
 class SEModule(Module):
     """ SE block
     """
+
     def __init__(self, channels, reduction):
         super(SEModule, self).__init__()
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
@@ -138,10 +147,10 @@ class SEModule(Module):
         return module_input * x
 
 
-
 class BasicBlockIR(Module):
     """ BasicBlock for IRNet
     """
+
     def __init__(self, in_channel, depth, stride):
         super(BasicBlockIR, self).__init__()
         if in_channel == depth:
@@ -168,6 +177,7 @@ class BasicBlockIR(Module):
 class BottleneckIR(Module):
     """ BasicBlock with bottleneck for IRNet
     """
+
     def __init__(self, in_channel, depth, stride):
         super(BottleneckIR, self).__init__()
         reduction_channel = depth // 4
@@ -279,9 +289,9 @@ class Backbone(Module):
             "num_layers should be 18, 34, 50, 100 or 152"
         assert mode in ['ir', 'ir_se'], \
             "mode should be ir or ir_se"
-        
+
         self.fp16 = fp16
-        
+
         self.input_layer = Sequential(Conv2d(3, 64, (3, 3), 1, 1, bias=False),
                                       BatchNorm2d(64), PReLU(64))
         blocks = get_blocks(num_layers)
@@ -300,9 +310,9 @@ class Backbone(Module):
 
         if input_size[0] == 112:
             self.output_layer = Sequential(BatchNorm2d(output_channel),
-                                        Dropout(0.4), Flatten(),
-                                        Linear(output_channel * 7 * 7, 512),
-                                        BatchNorm1d(512, affine=False))
+                                           Dropout(0.4), Flatten(),
+                                           Linear(output_channel * 7 * 7, 512),
+                                           BatchNorm1d(512, affine=False))
         else:
             self.output_layer = Sequential(
                 BatchNorm2d(output_channel), Dropout(0.4), Flatten(),
@@ -319,10 +329,9 @@ class Backbone(Module):
 
         initialize_weights(self.modules())
 
-
     def forward(self, x):
         with torch.cuda.amp.autocast(self.fp16):
-        
+
             # current code only supports one extra image
             # it comes with a extra dimension for number of extra image. We will just squeeze it out for now
             x = self.input_layer(x)
@@ -335,7 +344,6 @@ class Backbone(Module):
         output = torch.div(x, norm)
 
         return output
-
 
 
 def IR_18(input_size, fp16=False):
@@ -416,4 +424,3 @@ def IR_SE_200(input_size, fp16=False):
     model = Backbone(input_size, 200, 'ir_se', fp16)
 
     return model
-
